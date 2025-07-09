@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Batch Attendance View</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    :root {
+      --bg: #e0e0e0;
+      --present: #b2f2bb;
+      --absent: #ffc9c9;
+      --highlight: #ffeaa7;
+      --shadow-dark: #bebebe;
+      --shadow-light: #ffffff;
+    }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: var(--bg);
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+    }
+
+    h1 {
+      margin-bottom: 10px;
+      font-size: 24px;
+    }
+
+    input, button {
+      padding: 12px;
+      font-size: 16px;
+      margin: 10px;
+      border-radius: 12px;
+      border: none;
+      width: 100%;
+      max-width: 300px;
+    }
+
+    input {
+      background: var(--bg);
+      box-shadow: inset 6px 6px 10px var(--shadow-dark), inset -6px -6px 10px var(--shadow-light);
+      text-align: center;
+    }
+
+    button {
+      background-color: #4caf50;
+      color: white;
+      cursor: pointer;
+      box-shadow: 6px 6px 12px var(--shadow-dark), -6px -6px 12px var(--shadow-light);
+    }
+
+    .table-container {
+      overflow-x: auto;
+      margin-top: 20px;
+      width: 100%;
+      max-width: 1000px;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      background: var(--bg);
+      box-shadow: 8px 8px 15px var(--shadow-dark), -8px -8px 15px var(--shadow-light);
+      border-radius: 12px;
+      overflow: hidden;
+      font-size: 14px;
+    }
+
+    th, td {
+      border: 1px solid #ccc;
+      padding: 10px;
+      text-align: center;
+    }
+
+    th {
+      background-color: #dcdcdc;
+    }
+
+    #downloadBtn {
+      display: none;
+    }
+
+    @media (max-width: 600px) {
+      h1 {
+        font-size: 20px;
+      }
+
+      table {
+        font-size: 12px;
+      }
+
+      th, td {
+        padding: 8px;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <h1>📘 Batch Attendance Viewer</h1>
+  <input type="text" id="batchInput" placeholder="Enter Batch (e.g. MCA1)">
+  <button id="viewBtn" onclick="loadBatchAttendance()">View</button>
+  <button id="downloadBtn" onclick="downloadExcel()">Download Excel</button>
+
+  <div id="batchHeading" style="margin-top:20px; font-size: 20px; font-weight: bold;"></div>
+  <div class="table-container">
+    <table id="attendanceTable"></table>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script>
+    let analyzedData = [];
+
+    async function loadBatchAttendance() {
+      const batch = document.getElementById('batchInput').value.trim().toLowerCase();
+      if (!batch) return alert('Please enter batch name');
+
+      const res = await fetch(`/api/class/${batch}`);
+      if (!res.ok) return alert('❌ Batch not found');
+
+      const { sheetName, data } = await res.json();
+      document.getElementById('downloadBtn').style.display = 'inline-block';
+      document.getElementById('viewBtn').textContent = 'Refresh';
+      renderBatchTable(batch.toUpperCase(), data);
+    }
+
+    function renderBatchTable(batchName, students) {
+      document.getElementById('batchHeading').textContent = `Batch: ${batchName}`;
+      const table = document.getElementById('attendanceTable');
+      table.innerHTML = '';
+      analyzedData = [];
+
+      if (!students.length) {
+        table.innerHTML = '<tr><td>No data available</td></tr>';
+        return;
+      }
+
+      const dates = Object.keys(students[0]).filter(k => /^\d{4}-\d{2}-\d{2}$/.test(k)).sort();
+      const headerRow = document.createElement('tr');
+      ['Roll No', 'Name', 'Total Present', 'Total Days', 'Percentage'].forEach(col => {
+        const th = document.createElement('th');
+        th.textContent = col;
+        headerRow.appendChild(th);
+      });
+      table.appendChild(headerRow);
+
+      students.forEach(student => {
+        let presentCount = 0;
+        let totalCount = dates.length;
+        dates.forEach(date => {
+          if (student[date] === 'Present') presentCount++;
+        });
+
+        const percentage = totalCount ? ((presentCount / totalCount) * 100).toFixed(1) : '0.0';
+
+        const row = document.createElement('tr');
+        const studentObj = {
+          RollNo: student.rollno || '',
+          Name: student.name || student.Name || '',
+          Present: presentCount,
+          TotalDays: totalCount,
+          Percentage: parseFloat(percentage)
+        };
+
+        ['RollNo', 'Name', 'Present', 'TotalDays', 'Percentage'].forEach(k => {
+          const td = document.createElement('td');
+          td.textContent = k === 'Percentage' ? studentObj[k] + '%' : studentObj[k];
+          row.appendChild(td);
+        });
+
+        analyzedData.push(studentObj);
+        table.appendChild(row);
+      });
+    }
+
+    function downloadExcel() {
+      if (!analyzedData.length) return alert("No data to export");
+      const worksheet = XLSX.utils.json_to_sheet(analyzedData);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Attendance Analysis");
+      XLSX.writeFile(workbook, "attendance_analysis.xlsx");
+    }
+  </script>
+
+</body>
+</html>

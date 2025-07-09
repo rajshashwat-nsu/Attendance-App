@@ -32,8 +32,6 @@ app.post('/api/login', (req, res) => {
     u.password?.trim() === password.trim()
   );
 
-  
-
   if (match) {
     const batches = (match.batches || '')
       .split(',')

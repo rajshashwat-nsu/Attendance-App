@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Student Attendance View</title>
+  <style>
+    :root {
+      --bg: #e0e0e0;
+      --present: #b2f2bb;
+      --absent: #ffc9c9;
+      --shadow-dark: #bebebe;
+      --shadow-light: #ffffff;
+    }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: var(--bg);
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    h1 {
+      margin: 10px 0;
+      font-size: 1.8rem;
+    }
+
+    .input-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 20px 0;
+      width: 100%;
+    }
+
+    input {
+      padding: 12px;
+      margin: 10px;
+      width: 80%;
+      max-width: 300px;
+      font-size: 16px;
+      border: none;
+      border-radius: 12px;
+      background: var(--bg);
+      box-shadow: inset 6px 6px 10px var(--shadow-dark), inset -6px -6px 10px var(--shadow-light);
+      text-align: center;
+    }
+
+    button {
+      padding: 12px 24px;
+      font-size: 16px;
+      border-radius: 12px;
+      border: none;
+      background-color: #4caf50;
+      color: white;
+      cursor: pointer;
+      margin-top: 10px;
+      box-shadow: 6px 6px 12px var(--shadow-dark), -6px -6px 12px var(--shadow-light);
+    }
+
+    .student-details {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .student-details h2 {
+      font-size: 1.5rem;
+      margin: 10px 0 5px;
+    }
+
+    .student-details p {
+      font-size: 1.1rem;
+      margin: 5px 0;
+    }
+
+    .calendar {
+      display: grid;
+      grid-template-columns: repeat(7, 1fr);
+      gap: 10px;
+      width: 100%;
+      max-width: 700px;
+      margin: 20px 0;
+    }
+
+    .day {
+      background: var(--bg);
+      box-shadow: 8px 8px 15px var(--shadow-dark), -8px -8px 15px var(--shadow-light);
+      border-radius: 12px;
+      padding: 10px 5px;
+      text-align: center;
+      font-size: 0.9rem;
+      line-height: 1.3;
+      height: 60px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .day.present {
+      background: var(--present);
+    }
+
+    .day.absent {
+      background: var(--absent);
+    }
+
+    .stats {
+      font-size: 1.1rem;
+      margin: 10px 0;
+    }
+
+    @media (max-width: 600px) {
+      .calendar {
+        gap: 6px;
+      }
+      .day {
+        padding: 8px 4px;
+        font-size: 0.8rem;
+      }
+    }
+  </style>
+</head>
+<body>
+  <h1>Student Attendance</h1>
+  <div class="input-box">
+    <input type="text" id="rollno" placeholder="Enter Roll Number">
+    <button onclick="loadStudent()">View Attendance</button>
+  </div>
+
+  <div class="student-details" id="studentInfo"></div>
+  <div class="calendar" id="calendarView"></div>
+  <div class="stats" id="attendanceStats"></div>
+
+  <script>
+    async function loadStudent() {
+      const rollno = document.getElementById('rollno').value.trim();
+      if (!rollno) return alert("Please enter roll number");
+
+      const res = await fetch(`/api/student/${rollno}`);
+      if (!res.ok) return alert("❌ Student not found");
+
+      const student = await res.json();
+      renderStudentAttendance(student);
+    }
+
+    function renderStudentAttendance(student) {
+      const today = new Date().toISOString().split('T')[0];
+      const month = today.slice(0, 7);
+      const year = parseInt(month.split('-')[0]);
+      const mon = parseInt(month.split('-')[1]) - 1;
+      const daysInMonth = new Date(year, mon + 1, 0).getDate();
+
+      document.getElementById('studentInfo').innerHTML = `
+        <h2>${student.name} (${student.rollno})</h2>
+        <p><strong>Batch:</strong> ${student.batch}</p>
+        <p><strong>Today:</strong> <span style="color:${student[today] === 'Present' ? 'green' : 'red'}">●</span></p>
+      `;
+
+      let presentCount = 0;
+      let totalCount = 0;
+      const calendar = document.getElementById('calendarView');
+      calendar.innerHTML = '';
+
+      const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+      for (let i = 0; i < 7; i++) {
+        const day = document.createElement('div');
+        day.className = 'day';
+        day.innerHTML = `<strong>${dayNames[i]}</strong>`;
+        calendar.appendChild(day);
+      }
+
+      const firstDay = new Date(year, mon, 1).getDay();
+      for (let i = 0; i < firstDay; i++) {
+        calendar.appendChild(document.createElement('div'));
+      }
+
+      for (let i = 1; i <= daysInMonth; i++) {
+        const dateStr = `${month}-${String(i).padStart(2, '0')}`;
+        const status = student[dateStr];
+
+        const dayBox = document.createElement('div');
+        dayBox.className = 'day';
+
+        if (status === 'Present') {
+          dayBox.classList.add('present');
+          presentCount++;
+          totalCount++;
+        } else if (status === 'Absent') {
+          dayBox.classList.add('absent');
+          totalCount++;
+        }
+
+        dayBox.innerHTML = `<strong>${i}</strong>`;
+        calendar.appendChild(dayBox);
+      }
+
+      const percentage = totalCount > 0 ? ((presentCount / totalCount) * 100).toFixed(2) : '0.00';
+      document.getElementById('attendanceStats').innerHTML = `
+        ✅ <strong>Present:</strong> ${presentCount} / ${totalCount} classes<br>
+        📊 <strong>Attendance:</strong> ${percentage}%
+      `;
+    }
+  </script>
+</body>
+</html>

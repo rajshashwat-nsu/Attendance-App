@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Attendance System</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #e0e0e0;
+      margin: 0;
+      padding: 20px;
+      text-align: center;
+    }
+
+    h1 {
+      margin-bottom: 20px;
+    }
+
+    .page {
+      display: none;
+    }
+
+    .active {
+      display: block;
+    }
+
+    input {
+      padding: 10px;
+      font-size: 16px;
+      margin: 8px;
+      width: 200px;
+      border-radius: 8px;
+      border: 1px solid #ccc;
+    }
+
+    button {
+      padding: 12px;
+      font-size: 16px;
+      border-radius: 10px;
+      border: none;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+
+    .button-list {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      max-width: 400px;
+      margin: 0 auto;
+    }
+
+    .class-button, .student-button, .save-button {
+      background: #e0e0e0;
+      box-shadow: 8px 8px 15px #bebebe,
+                  -8px -8px 15px #ffffff;
+    }
+
+    .student-button.present {
+      background: #b2f2bb;
+      box-shadow: inset 4px 4px 10px #9fd8a4,
+                  inset -4px -4px 10px #ccffc9;
+    }
+
+    .save-button {
+      margin-top: 30px;
+      background-color: #4caf50;
+      color: white;
+      box-shadow: none;
+    }
+
+    .back-button {
+      position: absolute;
+      left: 20px;
+      top: 20px;
+      padding: 8px 16px;
+      font-size: 14px;
+      background-color: #999;
+      color: white;
+      border-radius: 8px;
+      cursor: pointer;
+      display: none;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Login Page -->
+  <div id="page0" class="page active">
+    <h1>Login</h1>
+    <input type="text" id="username" placeholder="Username"><br>
+    <input type="password" id="password" placeholder="Password"><br>
+    <button onclick="login()">Login</button>
+    <p id="loginMessage" style="color:red;"></p>
+  </div>
+
+  <!-- Batch Selection Page -->
+  <div id="page1" class="page">
+    <h1>Select a Class</h1>
+    <div class="button-list" id="classList"></div>
+  </div>
+
+  <!-- Attendance Page -->
+  <div id="page2" class="page">
+    <button class="back-button" onclick="goBack()">← Back</button>
+    <h1 id="classHeading">Class</h1>
+    <div class="button-list" id="studentList"></div>
+    <button class="save-button" onclick="saveAttendance()">Save Attendance</button>
+  </div>
+
+  <script>
+    let currentClass = '';
+    let studentData = [];
+    let sheetName = '';
+    const today = new Date().toISOString().split('T')[0];
+    let loggedInUser = '';
+
+    function switchPage(pageId) {
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      document.getElementById(pageId).classList.add('active');
+      document.querySelector('.back-button').style.display = pageId === 'page2' ? 'inline-block' : 'none';
+    }
+
+    function goBack() {
+      switchPage('page1');
+    }
+
+    function login() {
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value.trim();
+      const msg = document.getElementById('loginMessage');
+
+      fetch('/api/login', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({ username, password })
+      })
+      .then(res => {
+        if (res.ok) return res.json();
+        else throw new Error('Login failed');
+      })
+      .then(data => {
+        msg.textContent = '';
+        loggedInUser = data.username;
+        switchPage('page1');
+        loadClassList();
+      })
+      .catch(() => {
+        msg.textContent = '❌ Invalid username or password';
+      });
+    }
+
+    async function loadClassList() {
+      const classListEl = document.getElementById('classList');
+      classListEl.innerHTML = '';
+
+      const files = await fetch(`/api/classes?username=${loggedInUser}`)
+        .then(res => res.json());
+
+      for (const file of files) {
+        const res = await fetch(`/api/class/${file}`);
+        const data = await res.json();
+        const studentCount = data.data.length;
+
+        const btn = document.createElement('button');
+        btn.className = 'class-button';
+        btn.textContent = `${file.toUpperCase()} (${studentCount} students)`;
+        btn.onclick = () => {
+          currentClass = file;
+          sheetName = data.sheetName;
+          studentData = data.data;
+
+          if (!(today in studentData[0])) {
+            studentData.forEach(row => row[today] = 'Absent');
+          }
+
+          document.getElementById('classHeading').textContent = file.toUpperCase();
+          renderStudents();
+          switchPage('page2');
+        };
+
+        classListEl.appendChild(btn);
+      }
+    }
+
+    function renderStudents() {
+  const container = document.getElementById('studentList');
+  container.innerHTML = '';
+
+  studentData.forEach((student, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'student-button';
+
+    const name = student.name || `Student ${i+1}`;
+    const roll = student.rollno || '';
+
+    btn.textContent = `${name} (${roll})`;
+
+    if (student[today] === 'Present') {
+      btn.classList.add('present');
+    }
+
+    btn.onclick = () => {
+      btn.classList.toggle('present');
+      studentData[i][today] = btn.classList.contains('present') ? 'Present' : 'Absent';
+    };
+
+    container.appendChild(btn);
+  });
+}
+
+    function saveAttendance() {
+      fetch(`/api/class/${currentClass}/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sheetName, data: studentData })
+      })
+      .then(res => res.text())
+      .then(msg => alert('✅ Attendance Saved!'));
+    }
+  </script>
+</body>
+</html>
